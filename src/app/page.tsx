@@ -4,10 +4,9 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSelector, useDispatch } from "react-redux";
 import { RootState } from "@/store/store";
-import { auth } from "@/lib/firebase";
 import { setUser } from "@/store/features/authSlice";
-import { signOut } from "firebase/auth";
-import Image from "next/image";
+import { supabase } from "@/lib/supabase";
+import Link from "next/link";
 
 export default function HomePage() {
   const router = useRouter();
@@ -15,28 +14,44 @@ export default function HomePage() {
   const user = useSelector((state: RootState) => state.auth.user);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
-      if (firebaseUser) {
-        // Create a serializable user object
-        const userData = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName,
-          photoURL: firebaseUser.photoURL,
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        // Get the user's profile from the user table
+        const getUserProfile = async () => {
+          const { data: profileData, error } = await supabase
+            .from("user")
+            .select("*")
+            .eq("id", session.user.id)
+            .maybeSingle();
+
+          if (error) throw error;
+
+          const userData = {
+            id: session.user.id,
+            email: session.user.email || null,
+            name: profileData?.name || null,
+            created_at: profileData?.created_at || new Date().toISOString(),
+          };
+          dispatch(setUser(userData));
         };
-        dispatch(setUser(userData));
+
+        getUserProfile();
       } else {
         dispatch(setUser(null));
         router.push("/auth/login");
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [dispatch, router]);
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await supabase.auth.signOut();
       router.push("/auth/login");
     } catch (error) {
       console.error("Error signing out:", error);
@@ -55,10 +70,14 @@ export default function HomePage() {
             <div className="flex items-center">
               <h1 className="text-xl font-bold text-gray-900">Vibe</h1>
             </div>
-            <div className="flex items-center">
-              <span className="mr-4 text-gray-700">
-                Welcome, {user.displayName}
-              </span>
+            <div className="flex items-center space-x-4">
+              <Link
+                href="/profile"
+                className="text-gray-700 hover:text-gray-900"
+              >
+                Profile
+              </Link>
+              <span className="text-gray-700">Welcome, {user.name}</span>
               <button
                 onClick={handleLogout}
                 className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"

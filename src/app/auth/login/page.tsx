@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
 import { useDispatch } from "react-redux";
 import { setUser } from "@/store/features/authSlice";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "react-hot-toast";
+import { supabaseAuth } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -21,24 +21,32 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
-      const user = userCredential.user;
+      const { data, error } = await supabaseAuth.signIn(email, password);
 
-      // Create a serializable user object
-      const userData = {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-      };
+      if (error) throw error;
 
-      dispatch(setUser(userData));
-      toast.success("Logged in successfully!");
-      router.push("/");
+      if (data.session) {
+        // Get the user's profile from the user table
+        const { data: profileData, error: profileError } = await supabase
+          .from("user")
+          .select("*")
+          .eq("id", data.session.user.id)
+          .maybeSingle();
+
+        if (profileError) throw profileError;
+
+        // Create a serializable user object
+        const userData = {
+          id: data.session.user.id,
+          email: data.session.user.email || null,
+          name: profileData?.name || null,
+          created_at: profileData?.created_at || new Date().toISOString(),
+        };
+
+        dispatch(setUser(userData));
+        toast.success("Logged in successfully!");
+        router.push("/");
+      }
     } catch (error: any) {
       toast.error(error.message);
     } finally {

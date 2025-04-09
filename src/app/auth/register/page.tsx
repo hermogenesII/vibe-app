@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { auth } from "@/lib/firebase";
 import { useDispatch } from "react-redux";
 import { setUser } from "@/store/features/authSlice";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "react-hot-toast";
+import { supabaseAuth } from "@/lib/supabase";
 
 export default function RegisterPage() {
   const [name, setName] = useState("");
@@ -22,28 +21,30 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
-      const user = userCredential.user;
+      const { data, error } = await supabaseAuth.signUp(email, password);
 
-      await updateProfile(user, {
-        displayName: name,
-      });
+      if (error) throw error;
 
-      // Create a serializable user object
-      const userData = {
-        uid: user.uid,
-        email: user.email,
-        displayName: name,
-        photoURL: user.photoURL,
-      };
+      if (data.user) {
+        // Update user metadata with name
+        const { error: updateError } = await supabaseAuth.updateProfile({
+          name: name,
+        });
 
-      dispatch(setUser(userData));
-      toast.success("Account created successfully!");
-      router.push("/");
+        if (updateError) throw updateError;
+
+        // Create a serializable user object
+        const userData = {
+          id: data.user.id,
+          email: data.user.email || null,
+          name: name,
+          created_at: new Date().toISOString(),
+        };
+
+        dispatch(setUser(userData));
+        toast.success("Account created successfully!");
+        router.push("/");
+      }
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -116,7 +117,7 @@ export default function RegisterPage() {
               disabled={loading}
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
-              {loading ? "Creating account..." : "Sign up"}
+              {loading ? "Creating account..." : "Create account"}
             </button>
           </div>
 
